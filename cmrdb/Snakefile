@@ -1,0 +1,19 @@
+from snakemake.utils import min_version
+min_version("6.5.3")
+
+if config["workflow"] == "process":
+    module process:
+        snakefile: "process/Snakefile"
+        config: config
+
+    use rule * from process as *
+
+elif config["workflow"] == "merge":
+    module merge:
+        snakefile: "merge/Snakefile"
+        config: config
+
+    use rule * from merge as *
+
+else:
+	print('Specify a workflow')

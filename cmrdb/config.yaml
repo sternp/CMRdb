@@ -1,0 +1,19 @@
+short_reads_1:
+    none
+short_reads_2:
+    none
+long_reads:
+    none
+n_cores:
+    8
+max_memory:
+    64
+output:
+    none
+sequencer_source:
+    TruSeq3
+workflow:
+    process
+skip_qc:
+    false
+

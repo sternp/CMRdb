@@ -1,0 +1,10 @@
+LICENSE.md
+README.md
+setup.py
+cmrdb/__init__.py
+cmrdb/cmrdb.py
+cmrdb.egg-info/PKG-INFO
+cmrdb.egg-info/SOURCES.txt
+cmrdb.egg-info/dependency_links.txt
+cmrdb.egg-info/entry_points.txt
+cmrdb.egg-info/top_level.txt

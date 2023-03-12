@@ -1,0 +1,224 @@
+onsuccess:
+    print("\u001b[42mCOMPLETE: CMRdb successfully finished\u001b[0m")
+
+onerror:
+    print("\u001b[41mERROR: CMRdb failed\u001b[0m")
+
+onstart:
+    import os
+    import sys
+
+    from snakemake.utils import logger, min_version
+
+    # minimum required snakemake version
+    min_version("6.5.3")
+    short_reads_1 = config["short_reads_1"]
+    short_reads_2 = config["short_reads_2"]
+    long_reads = config["long_reads"]
+    n_cores = config["n_cores"]
+    output = config["output"]
+    max_memory = config["max_memory"]
+    sequencer_source = config["sequencer_source"]
+    skip_qc = config["skip_qc"]
+
+rule all:
+    input:
+        "qc/done",
+        "spades_assembly/done",
+        "assembly_stats/done",
+        "singlem/done",
+        "gtdbtk/done",
+        "dram/done",
+        "checkm1/done",
+        "checkm2/done"
+    threads:
+        config["n_cores"]
+    resources:
+        mem_gb = config["max_memory"]
+
+rule qc:
+    input:
+    output:
+        "qc/done"
+    conda:
+        "kneaddata-v0.12.0"
+    threads:
+        config["n_cores"]
+    resources:
+        mem_gb = config["max_memory"]
+    message:
+        "Performing read QC..."
+    script:
+        "../scripts/qc.py"
+
+rule spades_assembly:
+    input:
+        'qc/done'
+    output:
+        "spades_assembly/done"
+    conda:
+        "spades-v3.15.5"
+    threads:
+        config["n_cores"]
+    resources:
+        mem_gb = config["max_memory"]
+    params:
+        qc_reads_1 = 'qc/clean_reads/R1/*',
+        qc_reads_2 = 'qc/clean_reads/R2/*'
+    message:
+        "Assembling using SPAdes in SAG mode (--sc)..."
+    shell:
+        "echo R1 = {params.qc_reads_1} && "
+        "echo R2 = {params.qc_reads_2} && "
+        "spades.py --sc \
+        -1 {params.qc_reads_1} \
+        -2 {params.qc_reads_2} \
+        -t {threads} \
+        -m {resources.mem_gb} \
+        --tmp-dir /data1/tmp \
+        -o spades_assembly && "
+
+        "mkdir spades_assembly/gtdbtk_input && "
+        "cp spades_assembly/scaffolds.fasta spades_assembly/gtdbtk_input/scaffolds.fasta && "
+        "touch spades_assembly/done"
+
+rule assembly_stats:
+    input:
+        "spades_assembly/done"
+    output:
+        "assembly_stats/done"
+    conda:
+        "bbmap"
+    threads:
+        config["n_cores"]
+    resources:
+        mem_gb = config["max_memory"]
+    message:
+        "Generating assembly statistics..."
+    shell:
+        "stats.sh in=spades_assembly/scaffolds.fasta out=assembly_stats/spades_scaffold_stats.txt && "
+        "touch assembly_stats/done"
+
+rule singlem:
+    input:
+        "assembly_stats/done"
+    output:
+        "singlem/done"
+    conda:
+        "singlem"
+    resources:
+        mem_gb = config["max_memory"]
+    params:
+        qc_reads_1 = 'qc/clean_reads/R1/*',
+        qc_reads_2 = 'qc/clean_reads/R2/*',
+        threads_half = int(int(config["n_cores"])/2) #singlem can use more threads than requested, therefore provide headroom
+    message:
+        "Running SingleM..."
+    shell:
+        "singlem pipe  \
+        --forward {params.qc_reads_1} \
+        --reverse {params.qc_reads_2} \
+        --threads {params.threads_half} \
+        --otu_table singlem/otu_table.tsv && "
+
+        "touch singlem/done"
+
+rule gtdbtk:
+    input:
+        'singlem/done'
+    output:
+        "gtdbtk/done"
+    conda:
+        "gtdbtk-v2.2.4"
+    threads:
+        config["n_cores"]
+    resources:
+        mem_gb = config["max_memory"]
+    message:
+        "Running GTDBTk..."
+    shell:
+        "gtdbtk classify_wf \
+        --genome_dir spades_assembly/gtdbtk_input \
+        --out_dir gtdbtk \
+        --cpus {threads} \
+        --pplacer_cpus {threads} \
+        --mash_db gtdbtk/mash_db \
+        --extension fasta && "
+
+        "rm gtdbtk/mash_db.msh && "
+        "touch gtdbtk/done"
+
+rule dram:
+    input:
+        "gtdbtk/done"
+    output:
+        "dram/done"
+    conda:
+        "dram"
+    threads:
+        config["n_cores"]
+    resources:
+        mem_gb = config["max_memory"]
+    params:
+        assembly = 'spades_assembly/scaffolds.fasta'
+    message:
+        "Running DRAM..."
+    shell:
+        "DRAM.py annotate \
+        -i {params.assembly} \
+        --threads {threads} \
+        --gtdb_taxonomy gtdbtk/classify/gtdbtk.bac120.summary.tsv \
+        -o dram/annotation && "
+
+        "DRAM.py distill \
+        -i dram/annotation/annotations.tsv \
+        -o dram/genome_summaries \
+        --trna_path dram/annotation/trnas.tsv \
+        --rrna_path dram/annotation/rrnas.tsv && "
+
+        "touch dram/done"
+
+rule checkm1:
+    input:
+        "dram/done"
+    output:
+        "checkm1/done"
+    conda:
+        "checkm-v1.2.2"
+    threads:
+        config["n_cores"]
+    resources:
+        mem_gb = config["max_memory"]
+    message:
+        "Running CheckM1..."
+    shell:
+        "checkm lineage_wf \
+        -t {threads} \
+        --pplacer_threads {threads} \
+        spades_assembly/gtdbtk_input \
+        --extension fasta \
+        checkm1 && "
+
+        "touch checkm1/done"
+
+rule checkm2:
+    input:
+        "checkm1/done"
+    output:
+        "checkm2/done"
+    conda:
+        "checkm2-v1.0.1"
+    threads:
+        config["n_cores"]
+    resources:
+        mem_gb = config["max_memory"]
+    message:
+        "Running CheckM2..."
+    shell:
+        "checkm2 predict \
+        --threads {threads} \
+        --input spades_assembly/gtdbtk_input \
+        -x fasta \
+        --output-directory checkm2 && "
+
+        "touch checkm2/done"
