@@ -16,4 +16,5 @@ workflow:
     process
 skip_qc:
     false
-
+assembly_type:
+    isolate

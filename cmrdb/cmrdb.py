@@ -186,6 +186,7 @@ def main():
         --long nanopore.fastq \\    
         -n 24 \\
         -m 128 \\
+        -a isolate \\    
         -o output_directory
     ''')
 
@@ -235,7 +236,15 @@ def main():
         dest='workflow',
         default='process'
     )
-
+    
+    parser_process.add_argument(
+        '-a', '--assembly-mode',
+        help='Adjust the SPAdes assembler according to sample type. Typical uses are metagenomic (meta), isolate (isolate) or single cell (sc) mode',
+        dest='assembly_mode',
+        choices=['isolate', 'meta', 'sc','bio','rna','plasmid'],
+        default='isolate'
+    )
+    
     ############################## Parsing input ##############################
     if (len(sys.argv) == 1 or len(sys.argv) == 2 or sys.argv[1] == '-h' or sys.argv[1] == '--help'):
         phelp()
@@ -263,7 +272,7 @@ def main():
             os.makedirs(prefix)
 
         #fill-in Namespace for attributes which only appear in specific subparsers
-        params=['pe1', 'pe2', 'long', 'n_cores', 'max_memory', 'output', 'conda_prefix', 'sequencer_source','skip_qc','workflow' ]
+        params=['pe1', 'pe2', 'long', 'n_cores', 'max_memory', 'output', 'conda_prefix', 'sequencer_source','skip_qc','workflow', 'assembly_mode' ]
         for i in params:
             try:
                 getattr(args, i)
@@ -283,6 +292,7 @@ def main():
                                 args.sequencer_source,                      
                                 args.skip_qc,
                                 args.workflow,
+                                args.assembly_mode,
                                 args)
 
         processor.make_config()
@@ -363,7 +373,7 @@ class cmrdb:
                  sequencer_source = "TruSeq3",
                  skip_qc=False,
                  workflow="none",
- 
+                 assembly_mode="isolate",
                  args=None
                  ):
         self.pe1 = pe1
@@ -376,7 +386,7 @@ class cmrdb:
         self.sequencer_source = sequencer_source
         self.skip_qc = skip_qc
         self.workflow = workflow
-
+        self.assembly_mode = assembly_mode
 
     def make_config(self):
         """
@@ -412,6 +422,8 @@ class cmrdb:
             self.skip_qc = self.skip_qc
         if self.workflow != "none":
             self.workflow = self.workflow
+        if self.assembly_mode != "isolate":
+            self.assembly_mode = self.assembly_mode    
 
         conf["short_reads_1"] = self.pe1
         conf["short_reads_2"] = self.pe2
@@ -422,6 +434,7 @@ class cmrdb:
         conf["sequencer_source"] = self.sequencer_source
         conf["skip_qc"] = self.skip_qc
         conf["workflow"] = self.workflow
+        conf["assembly_mode"] = self.assembly_mode
 
 
         with open(self.config, "w") as f:
