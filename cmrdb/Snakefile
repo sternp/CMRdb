@@ -8,12 +8,12 @@ if config["workflow"] == "process":
 
     use rule * from process as *
 
-elif config["workflow"] == "merge":
-    module merge:
-        snakefile: "merge/Snakefile"
+elif config["workflow"] == "mapper":
+    module mapper:
+        snakefile: "mapper/Snakefile"
         config: config
 
-    use rule * from merge as *
+    use rule * from mapper as *
 
 else:
 	print('Specify a workflow')

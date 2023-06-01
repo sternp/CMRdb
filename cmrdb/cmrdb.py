@@ -73,12 +73,12 @@ def phelp():
           \_____|_|  |_|_|  \_\__,_|_.__/  Centre for Microbiome Research, QUT
                                           
                                           
-        A pipline for the assembly of biobank samples and merging into the CMR genome database.
+        Pipeline for the assembly of biobank samples, mapping of reads to the db, and merging into the CMR genome database.
 
-        process - Full pipeline. Raw reads -> assembled, QCed, annotated genomes. Can skip the read QC.
-        merge - [NOT BUILT YET] Merge a genome into the underlying CMRdb
+        process - Full pipeline for assembly and annotation. Raw reads -> assembled, QCed, annotated genomes. Can skip the read QC.
+        mapper - Full pipeline for read mapping to CMRdb. Raw reads -> species & strain abundance profiles. Can skip the read QC.
 
-        Type 'cmrdb {process,merge} --help' for specific information
+        Type 'cmrdb {process,mapper} --help' for specific information
 
 """
 )
@@ -117,7 +117,7 @@ def main():
         '--conda-prefix',
         help='Path to the location of installed conda environments, or where to install new environments',
         dest='conda_prefix',
-        default=Config.get_conda_path(),
+        default='/mnt/hpccs01/work/microbiome/conda',
         metavar='<path>'
     )
 
@@ -244,6 +244,101 @@ def main():
         choices=['isolate', 'meta', 'sc','bio','rna','plasmid'],
         default='isolate'
     )
+
+    ##########################  sub-parser  ###########################
+    parser_mapper = subparsers.add_parser('mapper',
+                                        parents=[main_parser],
+                                        formatter_class=CustomHelpFormatter,
+                                        add_help=True, description='''
+
+                                ~ FULL PIPELINE - QC and mapping ~
+    How to use mapper:
+
+    cmrdb mapper
+        -1 reads_R1.fastq \\
+        -2 reads_R2.fastq \\  
+        ...TODO
+    ''')
+
+    parser_mapper.add_argument(
+        '-1',
+        help='Forward short FASTQ reads',
+        dest='pe1',
+        default="none",
+        metavar='<file1>'
+    )
+
+    parser_mapper.add_argument(
+        '-2',
+        help='Reverse short FASTQ reads',
+        dest='pe2',
+        default="none",
+        metavar='<file2>'
+    )
+
+    parser_mapper.add_argument(
+        '--sequencer-source',
+        help='Used for QC/trimming of short reads: NexteraPE, TruSeq2, TruSeq3, none.',
+        dest='sequencer_source',
+        default="TruSeq3",
+        metavar='<type>'
+    )
+
+    parser_mapper.add_argument(
+        '--skip-qc',
+        help='Skip the read QC step',
+        dest='skip_qc',
+        action='store_true',
+        default=False
+    )
+
+    parser_mapper.add_argument(
+        '-w', '--workflow',
+        help=argparse.SUPPRESS,
+        dest='workflow',
+        default='mapper'
+    )
+
+    parser_mapper.add_argument(
+        '--min-read-aligned-percent',
+        help='Minimum read alignment percent for CoverM filtering (scale from 0-1)',
+        dest='min_read_aligned_percent',
+        default=0.97,
+        metavar='<num>'
+    )
+
+    parser_mapper.add_argument(
+        '--min-read-percent-identity',
+        help='Minimum read percent identity for CoverM filtering (scale from 0-1)',
+        dest='min_read_percent_identity',
+        default=0.99,
+        metavar='<num>'
+    )
+    
+    parser_mapper.add_argument(
+        '--singlem-metapackage',
+        help='Location of a SingleM .smpkg.zb metapackage',
+        dest='singlem_metapackage',
+        default='/work/microbiome/db/singlem/S3.1.0.metapackage_20221209.smpkg.zb',
+        metavar='<dir>'
+    )
+
+    parser_mapper.add_argument(
+        '--singlem-db',
+        help='Location of a SingleM .sdb',
+        dest='singlem_db',
+        default='/work/microbiome/db/uhgg_v2/uhgg.sdb',
+        metavar='<dir>'
+    )
+
+    parser_mapper.add_argument(
+        '--genome-db',
+        help='Location of a db file specifying taxonomy, paths and genome IDs',
+        dest='genome_db',
+        default='/work/microbiome/db/uhgg_v2/genomeID_lineage_fna-list.txt',
+        metavar='<dir>'
+    )
+
     
     ############################## Parsing input ##############################
     if (len(sys.argv) == 1 or len(sys.argv) == 2 or sys.argv[1] == '-h' or sys.argv[1] == '--help'):
@@ -272,7 +367,7 @@ def main():
             os.makedirs(prefix)
 
         #fill-in Namespace for attributes which only appear in specific subparsers
-        params=['pe1', 'pe2', 'long', 'n_cores', 'max_memory', 'output', 'conda_prefix', 'sequencer_source','skip_qc','workflow', 'assembly_mode' ]
+        params=['pe1', 'pe2', 'long', 'n_cores', 'max_memory', 'output', 'conda_prefix', 'sequencer_source','skip_qc','workflow', 'assembly_mode', 'min_read_aligned_percent', 'min_read_percent_identity', 'singlem_db', 'singlem_metapackage', 'genome_db']
         for i in params:
             try:
                 getattr(args, i)
@@ -293,6 +388,11 @@ def main():
                                 args.skip_qc,
                                 args.workflow,
                                 args.assembly_mode,
+                                args.min_read_aligned_percent,
+                                args.min_read_percent_identity,
+                                args.singlem_db,
+                                args.singlem_metapackage,
+                                args.genome_db,
                                 args)
 
         processor.make_config()
@@ -374,6 +474,11 @@ class cmrdb:
                  skip_qc=False,
                  workflow="none",
                  assembly_mode="isolate",
+                 min_read_aligned_percent="none",
+                 min_read_percent_identity="none",
+                 singlem_db="none",
+                 singlem_metapackage="none",
+                 genome_db="none",
                  args=None
                  ):
         self.pe1 = pe1
@@ -387,6 +492,11 @@ class cmrdb:
         self.skip_qc = skip_qc
         self.workflow = workflow
         self.assembly_mode = assembly_mode
+        self.min_read_aligned_percent = min_read_aligned_percent
+        self.min_read_percent_identity = min_read_percent_identity
+        self.singlem_db = singlem_db
+        self.singlem_metapackage = singlem_metapackage
+        self.genome_db = genome_db
 
     def make_config(self):
         """
@@ -422,8 +532,18 @@ class cmrdb:
             self.skip_qc = self.skip_qc
         if self.workflow != "none":
             self.workflow = self.workflow
-        if self.assembly_mode != "isolate":
-            self.assembly_mode = self.assembly_mode    
+        if self.assembly_mode != "none":
+            self.assembly_mode = self.assembly_mode
+        if self.min_read_aligned_percent != "none":
+        	self.min_read_aligned_percent = self.min_read_aligned_percent
+        if self.min_read_percent_identity != "none":
+        	self.min_read_percent_identity = self.min_read_percent_identity
+        if self.singlem_db != "none":
+        	self.singlem_db = self.singlem_db
+        if self.singlem_metapackage != "none":
+        	self.singlem_metapackage = self.singlem_metapackage
+        if self.genome_db  != "none":
+        	self.genome_db = self.genome_db    
 
         conf["short_reads_1"] = self.pe1
         conf["short_reads_2"] = self.pe2
@@ -435,7 +555,11 @@ class cmrdb:
         conf["skip_qc"] = self.skip_qc
         conf["workflow"] = self.workflow
         conf["assembly_mode"] = self.assembly_mode
-
+        conf["min_read_aligned_percent"] = self.min_read_aligned_percent
+        conf["min_read_percent_identity"]  = self.min_read_percent_identity
+        conf["singlem_db"]  = self.singlem_db
+        conf["singlem_metapackage"]  = self.singlem_metapackage
+        conf["genome_db"]  = self.genome_db
 
         with open(self.config, "w") as f:
             yaml.dump(conf, f)
@@ -445,7 +569,7 @@ class cmrdb:
         load_configfile(self.config)
 
 
-    def run_workflow(self, workflow="process", cores=8, profile=None, dryrun=False, conda_frontend="mamba", snakemake_args = ""):
+    def run_workflow(self, workflow="mapper", cores=8, profile=None, dryrun=False, conda_frontend="mamba", snakemake_args = ""):
         """Runs the CMRdb pipeline
         By default all steps are executed
         Needs a config-file which is generated by given inputs.

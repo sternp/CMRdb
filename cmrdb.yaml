@@ -5,5 +5,5 @@ channels:
   - anaconda
 dependencies:
   - python
-  - snakemake>=6.5.1
-  - ruamel.yaml>=0.15.99 # needs to be explicit
+  - snakemake
+  - ruamel.yaml

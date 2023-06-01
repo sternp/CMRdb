@@ -30,8 +30,8 @@ rule all:
         "gtdbtk/done",
         "dram/done",
         "checkm1/done",
-        "checkm2/done",
-        "virsorter/done"
+        "checkm2/done"
+        #"virsorter/done"
     threads:
         config["n_cores"]
     resources:
@@ -224,25 +224,25 @@ rule checkm2:
 
         "touch checkm2/done"
 
-rule virsorter:
-    input:
-        "checkm2/done"
-    output:
-        "virsorter/done"
-    conda:
-        "virsorter-v2.2.4"
-    threads:
-        config["n_cores"]
-    resources:
-        mem_gb = config["max_memory"]
-    message:
-        "Running VirSorter2..."
-    shell:
-        "virsorter run \
-        -i spades_assembly/gtdbtk_input/scaffolds.fasta \
-        -w virsorter \
-        -j {threads} \
-        --tmpdir /data1/tmp \
-        --rm-tmpdir && "
-
-        "touch virsorter/done"
+#rule virsorter:
+#    input:
+#        "checkm2/done"
+#    output:
+#        "virsorter/done"
+#    conda:
+#        "virsorter-v2.2.4"
+#    threads:
+#        config["n_cores"]
+#    resources:
+#        mem_gb = config["max_memory"]
+#    message:
+#        "Running VirSorter2..."
+#    shell:
+#        "virsorter run \
+#        -i spades_assembly/gtdbtk_input/scaffolds.fasta \
+#        -w virsorter \
+#        -j {threads} \
+#        --tmpdir /data1/tmp \
+#        --rm-tmpdir && "
+#
+#        "touch virsorter/done"

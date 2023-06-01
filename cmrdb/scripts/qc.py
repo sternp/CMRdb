@@ -74,10 +74,8 @@ elif short_reads_1 != "none" and short_reads_2 != "none" and long_reads == "none
         mv qc/*trimmed.1.fastq qc/clean_reads/R1 &&
         mv qc/*trimmed.2.fastq qc/clean_reads/R2 &&
 
-        gzip qc/clean_reads/R1/* &&
+        gzip qc/clean_reads/R1/* &
         gzip qc/clean_reads/R2/* &&
-
-        rm qc/*.fastq &&
 
         touch qc/done
         """ %
@@ -109,10 +107,9 @@ elif short_reads_1 != "none" and short_reads_2 != "none" and long_reads != "none
         mv qc/*trimmed.1.fastq qc/clean_reads/R1 &&
         mv qc/*trimmed.2.fastq qc/clean_reads/R2 &&
 
-        gzip qc/clean_reads/R1/* &&
+        gzip qc/clean_reads/R1/* &
         gzip qc/clean_reads/R2/* &&
 
-        rm qc/*.fastq
         """ %
         (short_reads_1, short_reads_2, output_dir_path, snakemake.threads, snakemake.threads, max_memory, sequencer_source, trimmomatic_exec), shell=True).wait()
 

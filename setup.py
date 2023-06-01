@@ -29,7 +29,7 @@ setup(
     license='GPL-3.0',
     author='Peter Sternes',
     author_email='peter.sternes@qut.edu.au',
-    description='CMRbd - Biobank Sample Processing and Database Construction',
+    description='CMRbd - Biobank Sample Assembly, Annotation and Mapping',
     long_description=long_description,
     long_description_content_type='text/markdown',
     packages=['cmrdb'],
