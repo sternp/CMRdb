@@ -23,6 +23,8 @@ min_read_aligned_percent:
 min_read_percent_identity:
     99
 singlem_db:
-    /work/microbiome/db/uhgg_v2/uhgg.sdb
+    /work/microbiome/db/CMRdb/cmrdb.sdb
 genome_db:
-    /work/microbiome/db/uhgg_v2/genomeID_lineage_fna-list.txt
+    /work/microbiome/db/CMRdb/genome_db.txt
+checkm:
+    /work/microbiome/db/CMRdb/CMRdb_r214.tsv

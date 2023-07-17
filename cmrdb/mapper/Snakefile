@@ -24,21 +24,38 @@ onstart:
     singlem_db = config["singlem_db"]
     genome_db = config["genome_db"]
     singlem_metapackage = config["singlem_metapackage"]
+    checkm = config["checkm"]
 
+##RULES FOR USE WITH MORA
+#rule all:
+#    input:
+#        "qc/done",
+#        "singlem/done",
+#        "derep/done",
+#        "genomes/done",
+#        "coverm/done",
+#        "coverm_filter/done",
+#        "mora/done",
+#        "final/done"
+#    threads:
+#        config["n_cores"]
+#    resources:
+#        mem_gb = config["max_memory"]
+
+##RULES FOR USE WITH COVERM ONLY - NO MORA
 rule all:
     input:
         "qc/done",
         "singlem/done",
+        "derep/done",
         "genomes/done",
         "coverm/done",
         "coverm_filter/done",
-        "mora/done",
         "final/done"
     threads:
         config["n_cores"]
     resources:
         mem_gb = config["max_memory"]
-
 
 rule qc:
     input:
@@ -75,19 +92,20 @@ rule singlem:
     message:
         "Querying raw reads against SingleM database..."
     shell:
-        "conda env list && "
         "python /work/microbiome/sw/singlem_repos/singlem/bin/singlem pipe \
         -1 {params.reads_1} \
         -2 {params.reads_2} \
         --threads {threads} \
-        --metapackage {params.singlem_metapackage}  \
+        --metapackage {params.singlem_metapackage} \
         --otu-table singlem/singlem_full_table && "
 
         "python /work/microbiome/sw/singlem_repos/singlem/bin/singlem query \
         --threads {threads} \
         --query-otu-table singlem/singlem_full_table \
         --db {params.singlem_db} \
+        --max-divergence 1 \
         --limit-per-sequence 1 \
+        --max-nearest-neighbours 2 \
         > singlem/singlem_query_output && "
 
         "cat singlem/singlem_query_output | awk '{{print $6}}' | sed '/sample/d' | sort -u > singlem/MGYG_query_output && " #get MGYG id
@@ -96,9 +114,38 @@ rule singlem:
 
         "touch singlem/done"
 
-rule cat_genomes:
+rule derep:
     input:
         "singlem/done"
+    output:
+        "derep/done"
+    conda:
+        "skani"
+    threads:
+        config["n_cores"]
+    resources:
+        mem_gb = config["max_memory"]
+    params:
+        checkm = config["checkm"],
+    message:
+        "Deprelicating using skani (97% ANI & 50% coverage)..."
+    shell:
+        "python /work/microbiome/sw/CMRdb/cmrdb/scripts/fcluster_ANI.fastcluster.new.py \
+        --list_of_genomes genomes/list_of_genomes \
+        --checkm2 {params.checkm} \
+        --output derep/skani \
+        --threads {threads} \
+        --cutoff 0.03 && "
+
+        "mv skani_matrix.af derep/ && "
+
+        "sed '1d' derep/skani_derep_clusters | awk -F'\t' '{{print $3}}' > genomes/derep_list_of_genomes && "
+
+        "touch derep/done"
+
+rule cat_genomes:
+    input:
+        "derep/done"
     output:
         "genomes/done"
     threads:
@@ -108,13 +155,12 @@ rule cat_genomes:
     message:
         "Concatenating genomes identified by SingleM..."
     shell:
-        "cat `cat genomes/list_of_genomes` > genomes/combined_reference.fna && "
-        "touch"
-
+        "cat `cat genomes/derep_list_of_genomes` > genomes/combined_reference.fna && "
+        "touch genomes/done"
 
 rule coverm:
     input:
-        'singlem/done'
+        "genomes/done"
     output:
         "coverm/done"
     conda:
@@ -127,21 +173,23 @@ rule coverm:
         fna_file = 'genomes/combined_reference.fna',
         qc_reads_1 = 'qc/clean_reads/R1/*',
         qc_reads_2 = 'qc/clean_reads/R2/*',
-        bam = os.path.join('coverm/*.bam')
+        bam = os.path.join('coverm/*.bam'),
+        min_read_aligned_percent = config["min_read_aligned_percent"],
+        min_read_percent_identity = config["min_read_percent_identity"]
     message:
-        "Aligning reads to reference sequences..."
+        "Aligning reads to concatenated reference sequences..."
     shell:
-        "echo R1 = {params.qc_reads_1} && "
-        "echo R2 = {params.qc_reads_2} && "
         "cargo run --manifest-path /work/microbiome/sw/coverm_repos/coverm-dev/CoverM/Cargo.toml -- make \
         -1 {params.qc_reads_1} \
         -2 {params.qc_reads_2} \
         -r {params.fna_file} \
         --threads {threads} \
-        --minimap2-parameters '--secondary=yes -N 1000' \
+        --minimap2-parameters '--secondary=yes -N 10000' \
         -o coverm && "
 
-        "mv {params.bam} coverm/raw.bam && "
+        "sleep 30 && mv coverm/*.bam coverm/raw.bam && "
+
+#        "samtools flagstat -@ {threads} coverm/raw.bam -O tsv > coverm/mapping_report && "
 
         "touch coverm/done"
 
@@ -161,57 +209,49 @@ rule coverm_filter:
         min_read_aligned_percent = config["min_read_aligned_percent"],
         min_read_percent_identity = config["min_read_percent_identity"]
     message:
-        "Filtering read alignments..."
+        "Filtering read alignments...\n"
+        "min_read_percent_identity = {params.min_read_percent_identity}\n"
+        "min_read_aligned_percent = {params.min_read_aligned_percent}\n"
     shell:
-        "echo min_read_percent_identity = {params.min_read_percent_identity} && "
-        "echo min_read_aligned_percent = {params.min_read_aligned_percent} && "
-
         "cargo run --manifest-path /work/microbiome/sw/coverm_repos/coverm-dev/CoverM/Cargo.toml -- filter \
         -b {params.bam} \
         --min-read-percent-identity {params.min_read_percent_identity} \
         --min-read-aligned-percent {params.min_read_aligned_percent} \
-        --include-secondary \
+        --proper-pairs-only \
         --threads {threads} \
-        -o coverm_output/filtered.bam && "
+        -o coverm_filter/filtered.bam & "
 
-        "samtools view -h -o coverm_filter/filtered.sam coverm_filter/filtered.bam && "
+        "cargo run --manifest-path /work/microbiome/sw/coverm_repos/coverm-dev/CoverM/Cargo.toml -- filter \
+        -b {params.bam} \
+        --inverse \
+        --min-read-percent-identity {params.min_read_percent_identity} \
+        --min-read-aligned-percent {params.min_read_aligned_percent} \
+        --proper-pairs-only \
+        --threads {threads} \
+        -o coverm_filter/unmapped.bam 1> /dev/null && "
+
+#        "samtools flagstat -@ {threads} coverm_filter/filtered.bam -O tsv > coverm_filter/mapping_report && "
+
+        "samtools merge -o coverm_filter/filtered_unmapped_combined.bam coverm_filter/filtered.bam coverm_filter/unmapped.bam --threads {threads} && "
+
+        "cargo run --manifest-path /work/microbiome/sw/coverm_repos/coverm-dev/CoverM/Cargo.toml -- genome \
+        -b coverm_filter/filtered_unmapped_combined.bam \
+        --genome-fasta-list genomes/derep_list_of_genomes \
+        --min-covered-fraction 0.01 \
+        --threads {threads} \
+        > coverm_filter/abundance_profile && "
+
+        "rm coverm_filter/filtereed.bam && "
+        "rm coverm_filter/unmapped.bam && "
+        "rm coverm/raw.bam && "
 
         "touch coverm_filter/done"
 
-rule mora:
+rule finalise_no_MORA:
     input:
         'coverm_filter/done'
     output:
-        "mora/done"
-    threads:
-        config["n_cores"]
-    conda:
-        "coverm-dev"
-    resources:
-        mem_gb = config["max_memory"]
-    params:
-        sam = 'coverm_filter/filtered.sam',
-        output = os.path.realpath(config["output"])
-    message:
-        "Reassigning multi-mapped reads via abundance-aware expectation maximisation..."
-    shell:
-        "singularity exec \
-        --bind /mnt/hpccs01/work/microbiome/sw/mora/target/release/mora \
-        --bind {params.output} \
-        /mnt/hpccs01/work/microbiome/sw/mora  \
-        /mnt/hpccs01/work/microbiome/sw/mora/target/release/mora \
-        -s {params.sam} \
-        -o {params.output}/mora/read_mappings \
-        -a {params.output}/mora/abundance \
-        --threads {threads} && "
-
-        "touch mora/done"
-
-rule finalise:
-    input:
-        'mora/done'
-    output:
-        "final/done",
+        "final/done"
     threads:
         config["n_cores"]
     conda:
@@ -222,14 +262,96 @@ rule finalise:
     message:
         "Assigning taxonomy and finalising results..."
     shell:
-        "cat mora_output/abundance | awk '{{print $2 \"\t\" $3}}' | sort -k 1b,1 > temp1 && "
-        "sort  -k 1b,1  /work/microbiome/db/uhgg_v2/MGYG_r214.tsv > temp2 && "
-        "sed 's/_/\t/' temp1 | awk -F\"\t\" '{{print $1 \"\t\" $3}}' > temp1b && "
+        "cat coverm_filter/abundance_profile | sed '1d' | sort -k 1b,1 > temp1 && "
+#        "cat coverm_filter/abundance_profile | sort -k 1b,1 > temp1 && "
+        "cat /work/microbiome/db/CMRdb/CMRdb_r214.tsv | awk '{{print $1 \"\t\" $2}}' | sort -k 1b,1  > temp2 && "
+        "sed 's/_/\t/' temp1 | awk -F\"\t\" '{{print $1 \"\t\" $2}}' | sed 's/\.fa//;s/\.fna//' > temp1b && "
         "cat temp1b | datamash -s -g1 sum 2 > temp1c && "
         "join -j1 temp2 temp1c -t $'\t' > final/strain_level_abundance && "
         "awk -F\"\t\" '{{print $2 \"\t\" $3}}' final/strain_level_abundance > temp4 && "
         "cat temp4 | datamash -s -g1 sum 2 > final/species_level_abundance && "
 
+#        "initial=$(cat coverm/mapping_report | sed -n '2p' | awk -F\'\t\' '{{print $1}}') && "
+#        "filtered=$(cat coverm_filter/mapping_report  | sed -n '2p' | awk -F'\t' '{{print $1}}') && "
+#        "echo $(bc <<<\"scale=4; $filtered / $initial\") >> final/mapped_read_proportion && "
+
         "rm temp* && "
 
+#        "rm genomes/combined_reference.fna && "
+
         "touch final/done"
+
+
+
+#rule mora:
+#    input:
+#        'coverm_filter/done'
+#    output:
+#        "mora/done"
+#    threads:
+#        config["n_cores"]
+#    conda:
+#        "mora"
+#    resources:
+#        mem_gb = config["max_memory"]
+#    params:
+#        bam = 'coverm_filter/filtered.bam',
+#        output = os.path.realpath(config["output"])
+#    message:
+#        "Reassigning multi-mapped reads via expectation maximisation with MORA..."
+#    shell:
+#        "module load rust/1.65.0-gcccore-12.2.0 && "
+##        "singularity build --force --sandbox mora_sandbox docker-archive:///work/microbiome/sw/mora-image10.tar && "
+##       "mora_path=$(realpath mora_sandbox) && "
+##      "out_path=$(realpath {params.output}) && " #redundant
+##        "singularity exec \
+##        --bind $mora_path/target/release \
+##        --bind $out_path \
+##        $mora_path  \
+##        $mora_path/target/release/mora \
+##        -s {params.sam} \
+##        -o $out_path/mora/read_mappings \
+##        -a $out_path/mora/abundance \
+##        --threads {threads} && "
+#        "cargo run --manifest-path /work/microbiome/sw/MORA/Cargo.toml -- \
+#        --sam {params.bam} \
+#        --output {params.output}/mora/read_assignments \
+#        --abund_out {params.output}/mora/abundance_profile \
+#        -t {threads} && "
+#
+#        "touch mora/done"
+#
+#rule finalise:
+#    input:
+#        'mora/done'
+#    output:
+#        "final/done",
+#    threads:
+#        config["n_cores"]
+#    conda:
+#        'datamash'
+#    resources:
+#        mem_gb = config["max_memory"]
+#    params:
+#    message:
+#        "Assigning taxonomy and finalising results..."
+#    shell:
+#        "cat mora/abundance_profile | awk '{{print $2 \"\t\" $3}}' | sort -k 1b,1 > temp1 && "
+#        "sort  -k 1b,1  /work/microbiome/db/uhgg_v2/MGYG_r214.tsv > temp2 && "
+#        "sed 's/_/\t/' temp1 | awk -F\"\t\" '{{print $1 \"\t\" $3}}' | sed 's/\.fa//;s/\.fna//' > temp1b && "
+#        "cat temp1b | datamash -s -g1 sum 2 > temp1c && "
+#        "join -j1 temp2 temp1c -t $'\t' > final/strain_level_abundance && "
+#        "awk -F\"\t\" '{{print $2 \"\t\" $3}}' final/strain_level_abundance > temp4 && "
+#        "cat temp4 | datamash -s -g1 sum 2 > final/species_level_abundance && "
+#
+#        "initial=$(cat coverm/mapping_report | sed -n '2p' | awk -F\'\t\' '{{print $1}}') && "
+#        "filtered=$(cat coverm_filter/mapping_report  | sed -n '2p' | awk -F'\t' '{{print $1}}') && "
+#        "echo $(bc <<<\"scale=4; $filtered / $initial\") >> final/mapped_read_proportion && "
+#
+#        "rm temp* && "
+#
+##        "rm -rf mora_sandbox && "
+#
+##        "rm genomes/combined_reference.fna && "
+#
+#        "touch final/done"

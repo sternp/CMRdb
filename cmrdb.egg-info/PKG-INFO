@@ -2,11 +2,12 @@ Metadata-Version: 2.1
 Name: cmrdb
 Version: 0.1
 Summary: CMRbd - Biobank Sample Assembly, Annotation and Mapping
+Home-page: UNKNOWN
 Author: Peter Sternes
 Author-email: peter.sternes@qut.edu.au
 License: GPL-3.0
+Description: 
+        
+Platform: UNKNOWN
 Classifier: Topic :: Scientific/Engineering :: Bio-Informatics
 Description-Content-Type: text/markdown
-License-File: LICENSE.md
-
-

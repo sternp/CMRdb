@@ -65,14 +65,14 @@ def centerify(text, width=-1):
 def phelp():
     print(
 """
-           _____ __  __ _____     _ _     
-          / ____|  \/  |  __ \   | | |    
-         | |    | \  / | |__) |__| | |__  
-         | |    | |\/| |  _  // _` | '_ \ 
+           _____ __  __ _____     _ _
+          / ____|  \/  |  __ \   | | |
+         | |    | \  / | |__) |__| | |__
+         | |    | |\/| |  _  // _` | '_ \
          | |____| |  | | | \ \ (_| | |_) |
           \_____|_|  |_|_|  \_\__,_|_.__/  Centre for Microbiome Research, QUT
-                                          
-                                          
+
+
         Pipeline for the assembly of biobank samples, mapping of reads to the db, and merging into the CMR genome database.
 
         process - Full pipeline for assembly and annotation. Raw reads -> assembled, QCed, annotated genomes. Can skip the read QC.
@@ -183,10 +183,10 @@ def main():
     cmrdb process
         -1 reads_R1.fastq \\
         -2 reads_R2.fastq \\
-        --long nanopore.fastq \\    
+        --long nanopore.fastq \\
         -n 24 \\
         -m 128 \\
-        -a isolate \\    
+        -a isolate \\
         -o output_directory
     ''')
 
@@ -236,7 +236,7 @@ def main():
         dest='workflow',
         default='process'
     )
-    
+
     parser_process.add_argument(
         '-a', '--assembly-mode',
         help='Adjust the SPAdes assembler according to sample type. Typical uses are metagenomic (meta), isolate (isolate) or single cell (sc) mode',
@@ -256,7 +256,7 @@ def main():
 
     cmrdb mapper
         -1 reads_R1.fastq \\
-        -2 reads_R2.fastq \\  
+        -2 reads_R2.fastq \\
         ...TODO
     ''')
 
@@ -311,15 +311,15 @@ def main():
         '--min-read-percent-identity',
         help='Minimum read percent identity for CoverM filtering (scale from 0-1)',
         dest='min_read_percent_identity',
-        default=0.99,
+        default=0.97,
         metavar='<num>'
     )
-    
+
     parser_mapper.add_argument(
         '--singlem-metapackage',
         help='Location of a SingleM .smpkg.zb metapackage',
         dest='singlem_metapackage',
-        default='/work/microbiome/db/singlem/S3.1.0.metapackage_20221209.smpkg.zb',
+        default='/work/microbiome/db/singlem/S3.2.0.GTDB_r214.metapackage_20230428.smpkg',
         metavar='<dir>'
     )
 
@@ -327,7 +327,7 @@ def main():
         '--singlem-db',
         help='Location of a SingleM .sdb',
         dest='singlem_db',
-        default='/work/microbiome/db/uhgg_v2/uhgg.sdb',
+        default='/work/microbiome/db/CMRdb/cmrdb.sdb',
         metavar='<dir>'
     )
 
@@ -339,7 +339,7 @@ def main():
         metavar='<dir>'
     )
 
-    
+
     ############################## Parsing input ##############################
     if (len(sys.argv) == 1 or len(sys.argv) == 2 or sys.argv[1] == '-h' or sys.argv[1] == '--help'):
         phelp()
@@ -384,7 +384,7 @@ def main():
                                 int(args.max_memory),
                                 args.output,
                                 args.conda_prefix,
-                                args.sequencer_source,                      
+                                args.sequencer_source,
                                 args.skip_qc,
                                 args.workflow,
                                 args.assembly_mode,
@@ -523,7 +523,7 @@ class cmrdb:
         if self.pe2 != "none":
             self.pe2 = os.path.abspath(self.pe2)
         if self.long != "none":
-            self.long = os.path.abspath(self.long)    
+            self.long = os.path.abspath(self.long)
         if self.output != "none":
             self.output = os.path.abspath(self.output)
         if self.sequencer_source != "TruSeq3":
@@ -543,7 +543,7 @@ class cmrdb:
         if self.singlem_metapackage != "none":
         	self.singlem_metapackage = self.singlem_metapackage
         if self.genome_db  != "none":
-        	self.genome_db = self.genome_db    
+        	self.genome_db = self.genome_db
 
         conf["short_reads_1"] = self.pe1
         conf["short_reads_2"] = self.pe2

@@ -130,7 +130,7 @@ rule gtdbtk:
     output:
         "gtdbtk/done"
     conda:
-        "gtdbtk-v2.2.4"
+        "gtdbtk-v2.2.6"
     threads:
         config["n_cores"]
     resources:
