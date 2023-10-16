@@ -28,7 +28,7 @@ rule all:
         "assembly_stats/done",
         "singlem/done",
         "gtdbtk/done",
-        "dram/done",
+#        "dram/done",
         "checkm1/done",
         "checkm2/done"
         #"virsorter/done"
@@ -106,7 +106,7 @@ rule singlem:
     output:
         "singlem/done"
     conda:
-        "singlem"
+        "singlem-v0.15.0"
     resources:
         mem_gb = config["max_memory"]
     params:
@@ -117,10 +117,10 @@ rule singlem:
         "Running SingleM..."
     shell:
         "singlem pipe  \
-        --forward {params.qc_reads_1} \
-        --reverse {params.qc_reads_2} \
+        -1 {params.qc_reads_1} \
+        -2 {params.qc_reads_2} \
         --threads {params.threads_half} \
-        --otu_table singlem/otu_table.tsv && "
+        --otu-table singlem/otu_table.tsv && "
 
         "touch singlem/done"
 
@@ -164,20 +164,37 @@ rule dram:
         assembly = 'spades_assembly/scaffolds.fasta'
     message:
         "Running DRAM..."
-    shell:
-        "DRAM.py annotate \
-        -i {params.assembly} \
-        --threads {threads} \
-        --gtdb_taxonomy gtdbtk/classify/gtdbtk.bac120.summary.tsv \
-        -o dram/annotation && "
-
-        "DRAM.py distill \
-        -i dram/annotation/annotations.tsv \
-        -o dram/genome_summaries \
-        --trna_path dram/annotation/trnas.tsv \
-        --rrna_path dram/annotation/rrnas.tsv && "
-
-        "touch dram/done"
+#    shell:
+#        "if [ ! -f gtdbtk/classify/gtdbtk.bac120.summary.tsv ] && [ ! -f gtdbtk/classify/gtdbtk.ar53.summary.tsv  ]; then
+#            DRAM.py annotate \
+#            -i {params.assembly} \
+#            --threads {threads} \
+#            --gtdb_taxonomy gtdbtk/classify/gtdbtk.bac120.summary.tsv \
+#            --gtdb_taxonomy gtdbtk/classify/gtdbtk.ar53.summary.tsv \
+#            -o dram/annotation
+#        elif [ ! -f gtdbtk/classify/gtdbtk.bac120.summary.tsv ] && [ -f gtdbtk/classify/gtdbtk.ar53.summary.tsv  ]; then
+#            DRAM.py annotate \
+#            -i {params.assembly} \
+#            --threads {threads} \
+#            --gtdb_taxonomy gtdbtk/classify/gtdbtk.ar53.summary.tsv \
+#            -o dram/annotation
+#        elif [ ! -f gtdbtk/classify/gtdbtk.bac120.summary.tsv ] && [ -f gtdbtk/classify/gtdbtk.ar53.summary.tsv  ]; then
+#            DRAM.py annotate \
+#            -i {params.assembly} \
+#            --threads {threads} \
+#            --gtdb_taxonomy gtdbtk/classify/gtdbtk.bac120.summary.tsv \
+#            -o dram/annotation
+#        fi && "
+#
+#        "DRAM.py distill \
+#        -i dram/annotation/annotations.tsv \
+#        -o dram/genome_summaries \
+#        --trna_path dram/annotation/trnas.tsv \
+#        --rrna_path dram/annotation/rrnas.tsv && "
+#
+#        "touch dram/done"
+    script:
+        "../scripts/dram.py"
 
 rule checkm1:
     input:

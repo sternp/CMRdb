@@ -25,6 +25,12 @@ onstart:
     genome_db = config["genome_db"]
     singlem_metapackage = config["singlem_metapackage"]
     checkm = config["checkm"]
+    skip_derep = config["skip_derep"]
+
+if config["skip_derep"] == "false":
+    ruleorder: all > qc > singlem > derep > cat_genomes > coverm > coverm_filter > finalise_no_MORA
+else:
+    ruleorder: all_no_derep > qc > singlem > cat_genomes > coverm > coverm_filter > finalise_no_MORA
 
 ##RULES FOR USE WITH MORA
 #rule all:
@@ -57,6 +63,19 @@ rule all:
     resources:
         mem_gb = config["max_memory"]
 
+rule all_no_derep:
+    input:
+        "qc/done",
+        "singlem/done",
+        "genomes/done",
+        "coverm/done",
+        "coverm_filter/done",
+        "final/done"
+    threads:
+        config["n_cores"]
+    resources:
+        mem_gb = config["max_memory"]
+
 rule qc:
     input:
     output:
@@ -78,7 +97,7 @@ rule singlem:
     output:
         "singlem/done"
     conda:
-        "singlem-dev"
+        "singlem-v0.15.0"
     threads:
         config["n_cores"]
     resources:
@@ -92,14 +111,14 @@ rule singlem:
     message:
         "Querying raw reads against SingleM database..."
     shell:
-        "python /work/microbiome/sw/singlem_repos/singlem/bin/singlem pipe \
+        "singlem pipe \
         -1 {params.reads_1} \
         -2 {params.reads_2} \
         --threads {threads} \
         --metapackage {params.singlem_metapackage} \
         --otu-table singlem/singlem_full_table && "
 
-        "python /work/microbiome/sw/singlem_repos/singlem/bin/singlem query \
+        "singlem query \
         --threads {threads} \
         --query-otu-table singlem/singlem_full_table \
         --db {params.singlem_db} \
@@ -110,7 +129,9 @@ rule singlem:
 
         "cat singlem/singlem_query_output | awk '{{print $6}}' | sed '/sample/d' | sort -u > singlem/MGYG_query_output && " #get MGYG id
 
-        "mkdir -p genomes && fgrep -f singlem/MGYG_query_output {params.genome_db} | awk '{{print $3}}' > genomes/list_of_genomes && " #get fna list
+        "sed -i 's/ /_/g' {params.genome_db} && " #fix spaces in species name
+
+        "mkdir -p genomes && fgrep -f singlem/MGYG_query_output {params.genome_db} | awk -F'\t' '{{print $3}}' > genomes/list_of_genomes && " #get fna list
 
         "touch singlem/done"
 
@@ -128,14 +149,14 @@ rule derep:
     params:
         checkm = config["checkm"],
     message:
-        "Deprelicating using skani (97% ANI & 50% coverage)..."
+        "Deprelicating using skani..."
     shell:
         "python /work/microbiome/sw/CMRdb/cmrdb/scripts/fcluster_ANI.fastcluster.new.py \
         --list_of_genomes genomes/list_of_genomes \
         --checkm2 {params.checkm} \
         --output derep/skani \
         --threads {threads} \
-        --cutoff 0.03 && "
+        --cutoff 0.01 && "
 
         "mv skani_matrix.af derep/ && "
 
@@ -184,8 +205,8 @@ rule coverm:
         -2 {params.qc_reads_2} \
         -r {params.fna_file} \
         --threads {threads} \
-        --minimap2-parameters '--secondary=yes -N 10000' \
         -o coverm && "
+#        --minimap2-parameters '--secondary=yes -N 10000' \
 
         "sleep 30 && mv coverm/*.bam coverm/raw.bam && "
 
@@ -241,9 +262,9 @@ rule coverm_filter:
         --threads {threads} \
         > coverm_filter/abundance_profile && "
 
-        "rm coverm_filter/filtereed.bam && "
+        "rm coverm_filter/filtered.bam && "
         "rm coverm_filter/unmapped.bam && "
-        "rm coverm/raw.bam && "
+#        "rm coverm/raw.bam && "
 
         "touch coverm_filter/done"
 
@@ -264,7 +285,8 @@ rule finalise_no_MORA:
     shell:
         "cat coverm_filter/abundance_profile | sed '1d' | sort -k 1b,1 > temp1 && "
 #        "cat coverm_filter/abundance_profile | sort -k 1b,1 > temp1 && "
-        "cat /work/microbiome/db/CMRdb/CMRdb_r214.tsv | awk '{{print $1 \"\t\" $2}}' | sort -k 1b,1  > temp2 && "
+        "cat /work/microbiome/db/CMRdb/CMRdb_r214.tsv | awk -F\"\t\" '{{print $1 \"\t\" $2}}' | sort -k 1b,1  > temp2 && "
+        "sed -i 's/ /_/g' temp2 && "
         "sed 's/_/\t/' temp1 | awk -F\"\t\" '{{print $1 \"\t\" $2}}' | sed 's/\.fa//;s/\.fna//' > temp1b && "
         "cat temp1b | datamash -s -g1 sum 2 > temp1c && "
         "join -j1 temp2 temp1c -t $'\t' > final/strain_level_abundance && "
@@ -275,7 +297,7 @@ rule finalise_no_MORA:
 #        "filtered=$(cat coverm_filter/mapping_report  | sed -n '2p' | awk -F'\t' '{{print $1}}') && "
 #        "echo $(bc <<<\"scale=4; $filtered / $initial\") >> final/mapped_read_proportion && "
 
-        "rm temp* && "
+#        "rm temp* && "
 
 #        "rm genomes/combined_reference.fna && "
 

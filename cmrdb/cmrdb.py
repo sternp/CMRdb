@@ -65,14 +65,14 @@ def centerify(text, width=-1):
 def phelp():
     print(
 """
-           _____ __  __ _____     _ _     
-          / ____|  \/  |  __ \   | | |    
-         | |    | \  / | |__) |__| | |__  
-         | |    | |\/| |  _  // _` | '_ \ 
+           _____ __  __ _____     _ _
+          / ____|  \/  |  __ \   | | |
+         | |    | \  / | |__) |__| | |__
+         | |    | |\/| |  _  // _` | '_ \
          | |____| |  | | | \ \ (_| | |_) |
           \_____|_|  |_|_|  \_\__,_|_.__/  Centre for Microbiome Research, QUT
-                                          
-                                          
+
+
         Pipeline for the assembly of biobank samples, mapping of reads to the db, and merging into the CMR genome database.
 
         process - Full pipeline for assembly and annotation. Raw reads -> assembled, QCed, annotated genomes. Can skip the read QC.
@@ -183,10 +183,10 @@ def main():
     cmrdb process
         -1 reads_R1.fastq \\
         -2 reads_R2.fastq \\
-        --long nanopore.fastq \\    
+        --long nanopore.fastq \\
         -n 24 \\
         -m 128 \\
-        -a isolate \\    
+        -a isolate \\
         -o output_directory
     ''')
 
@@ -236,7 +236,7 @@ def main():
         dest='workflow',
         default='process'
     )
-    
+
     parser_process.add_argument(
         '-a', '--assembly-mode',
         help='Adjust the SPAdes assembler according to sample type. Typical uses are metagenomic (meta), isolate (isolate) or single cell (sc) mode',
@@ -256,7 +256,7 @@ def main():
 
     cmrdb mapper
         -1 reads_R1.fastq \\
-        -2 reads_R2.fastq \\  
+        -2 reads_R2.fastq \\
         ...TODO
     ''')
 
@@ -314,7 +314,7 @@ def main():
         default=0.99,
         metavar='<num>'
     )
-    
+
     parser_mapper.add_argument(
         '--singlem-metapackage',
         help='Location of a SingleM .smpkg.zb metapackage',
@@ -346,7 +346,24 @@ def main():
         default='/work/microbiome/db/CMRdb/CMRdb_r214.tsv',
         metavar='<dir>'
     )
-    
+
+    parser_mapper.add_argument(
+        '--mag-stats',
+        help='Location of MAG stats file (no. amb bases and contigs) for derepping.',
+        dest='mag_stats',
+        default='/home/sternesp/microbiome/db/CMRdb/MAG_stats.tsv',
+        metavar='<dir>'
+    )
+
+    parser_mapper.add_argument(
+        '--skip-derep',
+        help='Skip dereplication',
+        dest='skip_derep',
+        action='store_true',
+        default=False
+    )
+
+
     ############################## Parsing input ##############################
     if (len(sys.argv) == 1 or len(sys.argv) == 2 or sys.argv[1] == '-h' or sys.argv[1] == '--help'):
         phelp()
@@ -374,7 +391,7 @@ def main():
             os.makedirs(prefix)
 
         #fill-in Namespace for attributes which only appear in specific subparsers
-        params=['pe1', 'pe2', 'long', 'n_cores', 'max_memory', 'output', 'conda_prefix', 'sequencer_source','skip_qc','workflow', 'assembly_mode', 'min_read_aligned_percent', 'min_read_percent_identity', 'singlem_db', 'singlem_metapackage', 'genome_db', 'checkm']
+        params=['pe1', 'pe2', 'long', 'n_cores', 'max_memory', 'output', 'conda_prefix', 'sequencer_source','skip_qc','workflow', 'assembly_mode', 'min_read_aligned_percent', 'min_read_percent_identity', 'singlem_db', 'singlem_metapackage', 'genome_db', 'checkm', 'mag_stats', 'skip_derep']
         for i in params:
             try:
                 getattr(args, i)
@@ -391,7 +408,7 @@ def main():
                                 int(args.max_memory),
                                 args.output,
                                 args.conda_prefix,
-                                args.sequencer_source,                      
+                                args.sequencer_source,
                                 args.skip_qc,
                                 args.workflow,
                                 args.assembly_mode,
@@ -401,6 +418,8 @@ def main():
                                 args.singlem_metapackage,
                                 args.genome_db,
                                 args.checkm,
+                                args.mag_stats,
+                                args.skip_derep,
                                 args)
 
         processor.make_config()
@@ -488,6 +507,8 @@ class cmrdb:
                  singlem_metapackage="none",
                  genome_db="none",
                  checkm="none",
+                 mag_stats="none",
+                 skip_derep="none",
                  args=None
                  ):
         self.pe1 = pe1
@@ -507,6 +528,8 @@ class cmrdb:
         self.singlem_metapackage = singlem_metapackage
         self.genome_db = genome_db
         self.checkm = checkm
+        self.mag_stats = mag_stats
+        self.skip_derep = skip_derep
 
     def make_config(self):
         """
@@ -533,7 +556,7 @@ class cmrdb:
         if self.pe2 != "none":
             self.pe2 = os.path.abspath(self.pe2)
         if self.long != "none":
-            self.long = os.path.abspath(self.long)    
+            self.long = os.path.abspath(self.long)
         if self.output != "none":
             self.output = os.path.abspath(self.output)
         if self.sequencer_source != "TruSeq3":
@@ -555,8 +578,11 @@ class cmrdb:
         if self.genome_db  != "none":
         	self.genome_db = self.genome_db
         if self.checkm  != "none":
-        	self.checkm = self.checkm        
-
+        	self.checkm = self.checkm
+        if self.mag_stats  != "none":
+        	self.mag_stats = self.mag_stats
+        if self.skip_derep  != "none":
+        	self.skip_derep = self.skip_derep
         conf["short_reads_1"] = self.pe1
         conf["short_reads_2"] = self.pe2
         conf["long_reads"] = self.long
@@ -573,6 +599,8 @@ class cmrdb:
         conf["singlem_metapackage"]  = self.singlem_metapackage
         conf["genome_db"]  = self.genome_db
         conf["checkm"]  = self.checkm
+        conf["mag_stats"]  = self.mag_stats
+        conf["skip_derep"]  = self.skip_derep
 
         with open(self.config, "w") as f:
             yaml.dump(conf, f)

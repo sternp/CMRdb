@@ -28,3 +28,7 @@ genome_db:
     /work/microbiome/db/CMRdb/genome_db.txt
 checkm:
     /work/microbiome/db/CMRdb/CMRdb_r214.tsv
+mag_stats:
+    /work/microbiome/db/CMRdb/MAG_stats.tsv
+skip_derep:
+    false    
