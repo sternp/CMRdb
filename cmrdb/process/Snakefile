@@ -20,6 +20,13 @@ onstart:
     max_memory = config["max_memory"]
     sequencer_source = config["sequencer_source"]
     skip_qc = config["skip_qc"]
+    assembly_mode = config["assembly_mode"]
+    assembly = config["assembly"]
+
+if config["assembly"] != "none":
+    ruleorder: skip_assembly > spades_assembly
+else:
+    ruleorder: spades_assembly > skip_assembly
 
 rule all:
     input:
@@ -65,13 +72,14 @@ rule spades_assembly:
         mem_gb = config["max_memory"]
     params:
         qc_reads_1 = 'qc/clean_reads/R1/*',
-        qc_reads_2 = 'qc/clean_reads/R2/*'
+        qc_reads_2 = 'qc/clean_reads/R2/*',
+        assembly_mode = config["assembly_mode"]
     message:
-        "Assembling using SPAdes in SAG mode (--sc)..."
+        "Assembling using SPAdes..."
     shell:
         "echo R1 = {params.qc_reads_1} && "
         "echo R2 = {params.qc_reads_2} && "
-        "spades.py --sc \
+        "spades.py --{params.assembly_mode} \
         -1 {params.qc_reads_1} \
         -2 {params.qc_reads_2} \
         -t {threads} \
@@ -81,6 +89,25 @@ rule spades_assembly:
 
         "mkdir spades_assembly/gtdbtk_input && "
         "cp spades_assembly/scaffolds.fasta spades_assembly/gtdbtk_input/scaffolds.fasta && "
+        "touch spades_assembly/done"
+
+rule skip_assembly:
+    input:
+        'qc/done'
+    output:
+        "spades_assembly/done"
+    threads:
+        config["n_cores"]
+    resources:
+        mem_gb = config["max_memory"]
+    params:
+        assembly = config["assembly"],
+    message:
+        "Skiping assembly..."
+    shell:
+        "mkdir spades_assembly/gtdbtk_input && "
+        "cp {params.assembly} spades_assembly/gtdbtk_input/scaffolds.fasta && "
+        "cp {params.assembly} spades_assembly/scaffolds.fasta && "
         "touch spades_assembly/done"
 
 rule assembly_stats:

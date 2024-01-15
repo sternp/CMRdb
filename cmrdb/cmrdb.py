@@ -181,13 +181,17 @@ def main():
     How to use process:
 
     cmrdb process
-        -1 reads_R1.fastq \\
-        -2 reads_R2.fastq \\
-        --long nanopore.fastq \\
+        -1 reads_R1.fastq.gz \\
+        -2 reads_R2.fastq.gz \\
+        --long nanopore.fastq.gz \\
+        --assembly-mode isolate \\
         -n 24 \\
         -m 128 \\
         -a isolate \\
         -o output_directory
+    
+    Alternatively, the assembly process can be skipped by supplying:
+        --assembly scaffolds.fasta \\
     ''')
 
     parser_process.add_argument(
@@ -245,6 +249,14 @@ def main():
         default='isolate'
     )
 
+    parser_process.add_argument(
+        '--assembly',
+        help='Location of an assembly in FASTA format. Supplying a pre-made assembly skips the assembly process',
+        dest='assembly',
+        default='none',
+        metavar='<file>'
+    )
+    
     ##########################  sub-parser  ###########################
     parser_mapper = subparsers.add_parser('mapper',
                                         parents=[main_parser],
@@ -391,7 +403,7 @@ def main():
             os.makedirs(prefix)
 
         #fill-in Namespace for attributes which only appear in specific subparsers
-        params=['pe1', 'pe2', 'long', 'n_cores', 'max_memory', 'output', 'conda_prefix', 'sequencer_source','skip_qc','workflow', 'assembly_mode', 'min_read_aligned_percent', 'min_read_percent_identity', 'singlem_db', 'singlem_metapackage', 'genome_db', 'checkm', 'mag_stats', 'skip_derep']
+        params=['pe1', 'pe2', 'long', 'n_cores', 'max_memory', 'output', 'conda_prefix', 'sequencer_source','skip_qc','workflow', 'assembly_mode', 'min_read_aligned_percent', 'min_read_percent_identity', 'singlem_db', 'singlem_metapackage', 'genome_db', 'checkm', 'mag_stats', 'skip_derep','assembly']
         for i in params:
             try:
                 getattr(args, i)
@@ -420,6 +432,7 @@ def main():
                                 args.checkm,
                                 args.mag_stats,
                                 args.skip_derep,
+                                args.assembly,
                                 args)
 
         processor.make_config()
@@ -509,7 +522,8 @@ class cmrdb:
                  checkm="none",
                  mag_stats="none",
                  skip_derep="none",
-                 args=None
+                 assembly="none",
+                 args=None,
                  ):
         self.pe1 = pe1
         self.pe2 = pe2
@@ -530,6 +544,7 @@ class cmrdb:
         self.checkm = checkm
         self.mag_stats = mag_stats
         self.skip_derep = skip_derep
+        self.assembly = assembly
 
     def make_config(self):
         """
@@ -583,6 +598,8 @@ class cmrdb:
         	self.mag_stats = self.mag_stats
         if self.skip_derep  != "none":
         	self.skip_derep = self.skip_derep
+        if self.assembly  != "none":
+        	self.assembly = self.assembly 
         conf["short_reads_1"] = self.pe1
         conf["short_reads_2"] = self.pe2
         conf["long_reads"] = self.long
@@ -601,6 +618,7 @@ class cmrdb:
         conf["checkm"]  = self.checkm
         conf["mag_stats"]  = self.mag_stats
         conf["skip_derep"]  = self.skip_derep
+        conf["assembly"]  = self.assembly
 
         with open(self.config, "w") as f:
             yaml.dump(conf, f)
